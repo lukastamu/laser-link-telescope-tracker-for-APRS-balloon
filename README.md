@@ -2,7 +2,7 @@
 Arduino based system created to rotate retroreflector prism on one axis.
 
 # aim
-Project's aim is to test laser link using high altitude weather ballon and retroreflector prism. Mirror telescope is used to track balloon and point laser straight to it.
+Project's aim is to test laser link using high altitude weather balloon and retroreflector prism. Mirror telescope is used to track balloon and point laser straight to it.
 
 # files
 File `Slave_device.ino` is written for Arduino nano rotary platform. Platform includes MPU9250 9-axis accel/gyro/mag sensor, u-blox M8 GNSS module, HC-05 Bluetooth module, continuous servo.
