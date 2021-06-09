@@ -118,7 +118,6 @@ void setup() {
   configure_magnetometer();
   config_gyro_accel();
 
-  //Start Bluetooth
   Serial.begin(9600);
 }
 
@@ -427,5 +426,5 @@ void sendBTData() {
   Serial.print(GNSS_speed);
   Serial.print(",");
   Serial.print(BatteryVoltage);
-  Serial.println(">"); //Message ending mark
+  Serial.print(">"); //Message ending mark
 }
