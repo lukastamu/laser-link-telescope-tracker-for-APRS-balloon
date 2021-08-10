@@ -82,9 +82,9 @@ float battVoltage = 0;
 float tempSensor[6] = {0};
 float Gxyz[3] = {0};
 float Axyz[3] = {0};
-float rotorHeading = 0;
-float rotorBattVoltage = 0;
-float rotorGyroZ = 0;
+float gimbalHeading = 0;
+float gimbalBattVoltage = 0;
+float gimbalGyroZ = 0;
 
 char I2Cmsg[200];
 int pos = 0;
@@ -161,12 +161,12 @@ void loop() {
     Serial.print("   ");
   }
   Serial.println();
-  Serial.print("Rotor Heading: ");
-  Serial.print(rotorHeading);
-  Serial.print(" Rotor battery: ");
-  Serial.print(rotorBattVoltage);
-  Serial.print(" Rotor Gyro Z: ");
-  Serial.println(rotorGyroZ);
+  Serial.print("Gimbal Heading: ");
+  Serial.print(gimbalHeading);
+  Serial.print(" Gimbal battery: ");
+  Serial.print(gimbalBattVoltage);
+  Serial.print(" Gimbal Gyro Z: ");
+  Serial.println(gimbalGyroZ);
 #endif
 
   if (aliveStatus) {
@@ -274,11 +274,11 @@ void receiveEvent(int howMany) {
           strtokIndex = strtok(NULL, ",");
           if (atof(strtokIndex) != 0) battVoltage = atof(strtokIndex);
           strtokIndex = strtok(NULL, ",");
-          if (atof(strtokIndex) != 0) rotorHeading = atof(strtokIndex);
+          if (atof(strtokIndex) != 0) gimbalHeading = atof(strtokIndex);
           strtokIndex = strtok(NULL, ",");
-          if (atof(strtokIndex) != 0) rotorBattVoltage = atof(strtokIndex);
+          if (atof(strtokIndex) != 0) gimbalBattVoltage = atof(strtokIndex);
           strtokIndex = strtok(NULL, ">");
-          if (atof(strtokIndex) != 0) rotorGyroZ = atof(strtokIndex);
+          if (atof(strtokIndex) != 0) gimbalGyroZ = atof(strtokIndex);
         }
       }
     }
@@ -455,9 +455,9 @@ void updateTelemetry() {
   char c_Ax[10];
   char c_Ay[10];
   char c_Az[10];
-  char cr_heading[10];
-  char cr_battVoltage[10];
-  char cr_gyroZ[10];
+  char cg_heading[10];
+  char cg_battVoltage[10];
+  char cg_gyroZ[10];
 
   dtostrf(GNSS_altitude, 3, 2, c_GNSS_altitude);
   dtostrf(pressureAltitude, 3, 2, c_pressureAltitude);
@@ -476,13 +476,13 @@ void updateTelemetry() {
   dtostrf(Axyz[1], 3, 2, c_Ay);
   dtostrf(Axyz[2], 3, 2, c_Az);
   dtostrf(battVoltage, 3, 2, c_battVoltage);
-  dtostrf(rotorHeading, 3, 2, cr_heading);
-  dtostrf(rotorBattVoltage, 3, 2, cr_battVoltage);
-  dtostrf(rotorGyroZ, 3, 2, cr_gyroZ);
+  dtostrf(gimbalHeading, 3, 2, cg_heading);
+  dtostrf(gimbalBattVoltage, 3, 2, cg_battVoltage);
+  dtostrf(gimbalGyroZ, 3, 2, cg_gyroZ);
 
   sprintf(telemetry_buff, "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", c_battVoltage, c_GNSS_altitude,
           c_pressureAltitude, c_baroPressure, c_baroTemp, c_temp1, c_temp2, c_temp3, c_temp4, c_temp5, c_temp6,
-          c_Gx, c_Gy, c_Gz, c_Ax, c_Ay, c_Az, cr_heading, cr_battVoltage, cr_gyroZ);
+          c_Gx, c_Gy, c_Gz, c_Ax, c_Ay, c_Az, cg_heading, cg_battVoltage, cg_gyroZ);
 
   //dtostrf(readBatt(), 5, 2, telemetry_buff + 43);
 
