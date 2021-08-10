@@ -3,22 +3,23 @@
 #include <NMEAGPS.h>
 #include <SdFat.h>
 #include <BMP180I2C.h>
-#include <basicMPU6050.h>
+#include <TinyMPU6050.h>
 #include <avr/wdt.h>
 
 // ----- SD card
 SdFat SD;
 File logfile;
 
-// ----- Configure GNSS
+// ----- GNSS
 NMEAGPS gnss;
 gps_fix fix;
 
 // ----- IMU
-basicMPU6050<> imu;
+MPU6050 mpu (Wire);
 float Gxyz[3] = {0};
 float Axyz[3] = {0};
-//calibration data
+// Calibration data
+float Acal[3] = {0, 0, 0.25};
 
 // ----- Barometer
 #define I2C_ADDRESS 0x77
@@ -49,92 +50,104 @@ const float seaLevelPressure = 1016.25;
 float tempSensor[6] = {0};
 // Power
 float battVoltage = 0;
-float R1 = 0;
-float R2 = 0;
+float ValueR1 = 4980;
+float ValueR2 = 7350;
+#define aref_voltage 3.3
 // Time
 int time_year = 0, time_mon = 0, time_day = 0;
 int time_hour = 0, time_min = 0, time_sec = 0;
 int timezone = 3;
 
-// ----- Information from slave device
-float rotorHeading = 0;
-float rotorBattVoltage = 0;
-float rotorGyroZ = 0;
+// ----- Information from gimbal
+float gimbalHeading = 0;
+float gimbalBattVoltage = 0;
+float gimbalGyroZ = 0;
 
 // ----- MISC
-#define aref_voltage 3.3
-int loopcounter1 = 0;
-int loopcounter2 = 0;
+#define led4ON digitalWrite(4, HIGH);
+#define led4OFF digitalWrite(4, LOW);
+#define led5ON digitalWrite(5, HIGH);
+#define led5OFF digitalWrite(5, LOW);
+unsigned long timer_1 = 0;
+unsigned long timer_2 = 0;
 
 // ----- Startup sequence
 void setup() {
-  // Start debug link
-  Serial.begin(9600);
-  // Initialize two LED pins
+  // Start watchdog
+  wdt_enable(WDTO_8S);
   pinMode(4, OUTPUT);
   pinMode(5, OUTPUT);
-  // Start I2C
+  for (int i = 1; i <= 2; i++) {
+    led4ON;
+    led5ON
+    delay(50);
+    led4OFF;
+    led5OFF;
+    delay(50);
+  }
   Wire.begin();
   // Start GNSS
   Serial1.begin(38400);
   // Start Bluetooth
   Serial3.begin(9600);
+  // Serial debug
+  Serial.begin(9600);
   // Start SD card
-  if (!SD.begin(53))
-  {
-    Serial.println("SD card init failed!");
-    for (int i = 1; i <= 2; i++) {
-      digitalWrite(4, HIGH);
-      delay(100);
-      digitalWrite(4, LOW);
-      delay(100);
+  if (!SD.begin(53)) {
+    while (true) {
+      Serial.println("SD card init failed!");
+      for (int i = 1; i <= 2; i++) {
+        led4ON;
+        delay(100);
+        led4OFF;
+        delay(100);
+      }
+      delay(1000);
     }
-    delay(2000);
   }
   initializeSD();
   // Start barometer
-  if (!bmp180.begin())
-  {
+  if (!bmp180.begin()) {
     Serial.println("BMP sensor init failed!");
-    for (int i = 1; i <= 4; i++) {
-      digitalWrite(4, HIGH);
-      delay(100);
-      digitalWrite(4, LOW);
-      delay(100);
+    while (true) {
+      for (int i = 1; i <= 4; i++) {
+        led4ON;
+        delay(100);
+        led4OFF;
+        delay(100);
+      }
+      delay(1000);
     }
-    delay(2000);
   }
   bmp180.resetToDefaults();
   bmp180.setSamplingMode(BMP180MI::MODE_UHR);
-  // initialize IMU
-  imu.setup();
-  imu.setBias();
+  // Initialize IMU
+  mpu.Initialize();
+  mpu.Calibrate();
   // Set analog reference
   analogReference(EXTERNAL);
-
-  wdt_enable(WDTO_8S);
-
-  digitalWrite(4, HIGH);
-  digitalWrite(5, HIGH);
-  delay(500);
-  digitalWrite(4, LOW);
-  digitalWrite(5, LOW);
-
+  // Finished
   Serial.println("System ready!");
+  led4ON;
+  led5ON;
+  delay(500);
+  led4OFF;
+  led5OFF;
 }
 
 // ----- Main loop
 void loop() {
   wdt_reset();
   updateGNSS();
-
-  if (loopcounter1 > 100) {
-    getMPU();
+  measureBatteryVoltage();
+  if (millis() - timer_1 > 100) {
     getBTData();
+    getMPU();
     readTemperatures();
-    loopcounter1 = 0;
+    timer_1 = millis();
   }
-  if (loopcounter2 > 1000) {
+  if (millis() - timer_2 > 1000) {
+
     Serial.print("Gyro");
     for (int i = 0; i <= 2; i++) {
       Serial.print("  ");
@@ -147,33 +160,32 @@ void loop() {
       Serial.print(Axyz[i]);
     }
     Serial.println();
-    digitalWrite(5, HIGH);
-    loopcounter2 = 0;
+    Serial.println(battVoltage);
+
+    led5ON;
     writeToSD();
     updateBaroData();
     sendDataToAPRS();
-    digitalWrite(5, LOW);
-    if (rotorBattVoltage != 0) {
+    if (gimbalBattVoltage != 0) {
       delay(50);
-      digitalWrite(4, HIGH);
+      led4ON;
       delay(50);
-      digitalWrite(4, LOW);
+      led4OFF;
     }
+    led5OFF;
+    timer_2 = millis();
   }
-  loopcounter1++;
-  loopcounter2++;
-  delay(1);
 }
 
 // ----- Read new data from sensor
 void getMPU() {
-  imu.updateBias();
-  Axyz[0] = imu.ax();
-  Axyz[1] = imu.ay();
-  Axyz[2] = imu.az();
-  Gxyz[0] = imu.gx();
-  Gxyz[1] = imu.gy();
-  Gxyz[2] = imu.gz();
+  mpu.Execute();
+  Axyz[0] = mpu.GetAccX() + Acal[0];
+  Axyz[1] = mpu.GetAccY() + Acal[1];
+  Axyz[2] = mpu.GetAccZ() + Acal[2];
+  Gxyz[0] = mpu.GetGyroX();
+  Gxyz[1] = mpu.GetGyroY();
+  Gxyz[2] = mpu.GetGyroZ();
 }
 
 // ----- Get new data from GNSS module
@@ -224,8 +236,8 @@ void updateBaroData() {
 void initializeSD() {
   logfile = SD.open("log.txt", FILE_WRITE);
   logfile.println("Logging started");
-  logfile.println("| Date | Time | GNSS lat, lon, alt(m), speed(kph), heading | Gyro X , Y , Z (deg/s) | Accel X , Y , Z (m/s^2) |"
-                  " Baro temp, pressure(Pa), pressure alt(m) | Temp 1, 2, 3, 4, 5, 6 | Batt | Rotor: heading, batt, gyro Z |");
+  logfile.println("| Date | Time | GNSS lat, lon, alt(m), speed(kph), heading | Gyro X , Y , Z (deg/s) | Accel X , Y , Z (G) |"
+                  " Baro temp, pressure(Pa), pressure alt(m) | Temp 1, 2, 3, 4, 5, 6 | Batt | Gimbal: heading, batt, gyro Z |");
   logfile.close();
 }
 
@@ -266,11 +278,11 @@ void writeToSD() {
   }
   logfile.print(battVoltage);
   logfile.print(",");
-  logfile.print(rotorHeading);
+  logfile.print(gimbalHeading);
   logfile.print(",");
-  logfile.print(rotorBattVoltage);
+  logfile.print(gimbalBattVoltage);
   logfile.print(",");
-  logfile.print(rotorGyroZ);
+  logfile.print(gimbalGyroZ);
   logfile.println();
   logfile.close();
 }
@@ -296,9 +308,9 @@ void sendDataToAPRS() {
   char c_Ax[10];
   char c_Ay[10];
   char c_Az[10];
-  char cr_heading[10];
-  char cr_battVoltage[10];
-  char cr_gyroZ[10];
+  char cg_heading[10];
+  char cg_battVoltage[10];
+  char cg_gyroZ[10];
 
   dtostrf(GNSS_lat, 3, 6, c_GNSS_lat);
   dtostrf(GNSS_lon, 3, 6, c_GNSS_lon);
@@ -319,9 +331,9 @@ void sendDataToAPRS() {
   dtostrf(Axyz[1], 3, 2, c_Ay);
   dtostrf(Axyz[2], 3, 2, c_Az);
   dtostrf(battVoltage, 3, 2, c_battVoltage);
-  dtostrf(rotorHeading, 3, 2, cr_heading);
-  dtostrf(rotorBattVoltage, 3, 2, cr_battVoltage);
-  dtostrf(rotorGyroZ, 3, 2, cr_gyroZ);
+  dtostrf(gimbalHeading, 3, 2, cg_heading);
+  dtostrf(gimbalBattVoltage, 3, 2, cg_battVoltage);
+  dtostrf(gimbalGyroZ, 3, 2, cg_gyroZ);
 
   Wire.beginTransmission(LightAPRS_ADDRESS);
   Wire.write("<");
@@ -384,11 +396,11 @@ void sendDataToAPRS() {
   Wire.endTransmission();
   delay(10);
   Wire.beginTransmission(LightAPRS_ADDRESS);
-  Wire.write(cr_heading);
+  Wire.write(cg_heading);
   Wire.write(",");
-  Wire.write(cr_battVoltage);
+  Wire.write(cg_battVoltage);
   Wire.write(",");
-  Wire.write(cr_gyroZ);
+  Wire.write(cg_gyroZ);
   Wire.write(">");
   Wire.endTransmission();
 }
@@ -424,11 +436,11 @@ void getBTData() {
   if (newData == true) {
     strcpy(readDataCopy, readData);
     strtokIndex = strtok(readDataCopy, ",");
-    if (atof(strtokIndex) != 0) rotorHeading = atof(strtokIndex);
+    if (atof(strtokIndex) != 0) gimbalHeading = atof(strtokIndex);
     strtokIndex = strtok(NULL, ",");
-    if (atof(strtokIndex) != 0) rotorBattVoltage = atof(strtokIndex);
+    if (atof(strtokIndex) != 0) gimbalBattVoltage = atof(strtokIndex);
     strtokIndex = strtok(NULL, ">");
-    if (atof(strtokIndex) != 0) rotorGyroZ = atof(strtokIndex);
+    if (atof(strtokIndex) != 0) gimbalGyroZ = atof(strtokIndex);
     newData = false;
   }
   newData = false;
@@ -446,6 +458,6 @@ void readTemperatures() {
 
 // ----- Read battery voltage
 void measureBatteryVoltage() {
-  float raw_voltage = analogRead(A13) * aref_voltage / 1024.0;
+  float raw_voltage = ((analogRead(A2) + 0.5) * aref_voltage / 1024.0) * ( 1 + (ValueR2 / ValueR1));
   battVoltage = battVoltage * 0.95 + raw_voltage * 0.05;
 }
