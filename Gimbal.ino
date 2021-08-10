@@ -234,7 +234,7 @@ void calculatePIDInput(float azimuth, float heading) {
 
 // ----- Read battery voltage
 void measureBatteryVoltage() {
-  float raw_voltage = analogRead(A6) * 5.01 / 1023.0;
+  float raw_voltage = (analogRead(A6) + 0.5) * 5.01 / 1024.0;
   battVoltage = battVoltage * 0.95 + raw_voltage * 0.05;
 }
 
