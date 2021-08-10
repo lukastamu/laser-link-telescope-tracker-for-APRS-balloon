@@ -59,7 +59,7 @@ int time_hour = 0, time_min = 0, time_sec = 0;
 int timezone = 3;
 
 // ----- Information from gimbal
-float gimbalHeading = 0;
+int gimbalHeading = 0;
 float gimbalBattVoltage = 0;
 float gimbalGyroZ = 0;
 
@@ -220,7 +220,7 @@ void updateBaroData() {
   do {
     delay(10);
   } while (!bmp180.hasTemperatureValue());
-  baroTemp = bmp180.getTemperature() - 3;
+  baroTemp = bmp180.getTemperature() - 5;
 
   if (!bmp180.measurePressure()) return;
 
