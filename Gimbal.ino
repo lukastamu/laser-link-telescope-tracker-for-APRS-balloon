@@ -72,24 +72,23 @@ PID myPID(&input, &output, &setpoint, ap, ai, ad, DIRECT);
 float battVoltage = 0;
 float toDeg = 180 / PI;
 float toRad = PI / 180;
-unsigned long time_started = 0;
+unsigned long timer = 0;
 
 // ----- Setup sequence
 void setup() {
-  //start watchdog
+  // Start watchdog
   wdt_enable(WDTO_1S);
   Wire.begin();
-  //start Bluetooth
+  // Start Bluetooth
   Serial.begin(9600);
-  //start GNSS port
+  // Start GNSS port
   gnssPort.begin(9600);
-  //start servo
   servo.attach(5);
-  //setup PID
+  // Setup PID
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(-89, 89);
   myPID.SetSampleTime(5);
-  //initialize IMU
+  // Initialize IMU
   myIMU.initialize();
   myIMU.setFullScaleGyroRange(1); //500 LSB(d/s) scale
   myIMU.setFullScaleAccelRange(1); //4G scale
@@ -107,16 +106,16 @@ void loop() {
   if (delta <= 24) myPID.SetTunings(cp, ci, cd);
   else myPID.SetTunings(ap, ai, ad);
   myPID.Compute();
-  //move servo accordingly
+  // Move servo accordingly
   if (GNSS_lat != 0 && GNSS_lon != 0) {
     servo.write(output + 90);
-    //indicate setpoint
+    // Indicate setpoint
     if (delta <= 5) ledON;
     else ledOFF;
   }
-  if ((millis() - time_started) > 200) {
+  if ((millis() - timer) > 200) {
     sendBTData();
-    time_started = millis();
+    timer = millis();
   }
   measureBatteryVoltage();
 }
@@ -144,15 +143,14 @@ void getMPU() {
 int getHeading(float acc[3], float mag[3], float p[3]) {
   float E[3], N[3]; //direction vectors
 
-  // cross "down" (acceleration vector) with magnetic vector (magnetic north + inclination) with  to produce "east"
+  // Cross "down" (acceleration vector) with magnetic vector (magnetic north + inclination) with  to produce "east"
   vector_cross(acc, mag, E);
   vector_normalize(E);
 
-  // cross "east" with "down" to produce "north" (parallel to the ground)
+  // Cross "east" with "down" to produce "north" (parallel to the ground)
   vector_cross(E, acc, N);
   vector_normalize(N);
 
-  // compute heading
   int heading = round(atan2(vector_dot(E, p), vector_dot(N, p)) * 180 / M_PI);
   heading = -heading + 90 + declination;
   if (heading < 0)
@@ -165,11 +163,11 @@ int getHeading(float acc[3], float mag[3], float p[3]) {
 // ----- Smoothen any fluctuations
 void getHeading_smooth() {
   getMPU();
-  // correct for accelerometer and magnetometer alignment
+  // Correct for accelerometer and magnetometer alignment
   float tmp = Axyz[1];
-  Axyz[1] = Axyz[0]; //swap x and y
+  Axyz[1] = Axyz[0]; // Swap x and y
   Axyz[0] = tmp;
-  Axyz[2] = -Axyz[2]; //invert z axis
+  Axyz[2] = -Axyz[2]; // Invert z axis
 
   int new_heading = getHeading(Axyz, Mxyz, p);
 
@@ -236,7 +234,7 @@ void calculatePIDInput(float azimuth, float heading) {
 
 // ----- Read battery voltage
 void measureBatteryVoltage() {
-  float raw_voltage = analogRead(A6) * 5.01 / 1024.0;
+  float raw_voltage = analogRead(A6) * 5.01 / 1023.0;
   battVoltage = battVoltage * 0.95 + raw_voltage * 0.05;
 }
 
