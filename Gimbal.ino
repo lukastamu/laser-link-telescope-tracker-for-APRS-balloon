@@ -29,7 +29,7 @@ float Mxyz[3];
 float declination = +8.5;
 //general vars
 int heading = 0;
-float smoothing = 0.85 ;
+float smoothing = 0.82 ;
 //orientation vector
 float p[] = {1, 0, 0};
 /*
@@ -58,77 +58,73 @@ double input = 0;
 double output = 0;
 //aggresive values
 double ap = 0.8;
-double ai = 0;
-double ad = 0.0035;
+double ai = 0.01;
+double ad = 0.002;
 //concervative values
-double cp = 0.55;
-double ci = 0.01;
-double cd = 0.0035;
+double cp = 0.5;
+double ci = 0.02;
+double cd = 0.002;
 PID myPID(&input, &output, &setpoint, ap, ai, ad, DIRECT);
 
 // ----- MISC
+#define ledON          digitalWrite(13, HIGH)
+#define ledOFF         digitalWrite(13, LOW)
 float battVoltage = 0;
 float toDeg = 180 / PI;
 float toRad = PI / 180;
-long loopcounter = 0;
-unsigned long now = 0, last = 0; //micros() timers
-float deltat = 0;  //loop time in seconds
+unsigned long time_started = 0;
 
 // ----- Setup sequence
 void setup() {
+  //start watchdog
+  wdt_enable(WDTO_1S);
   Wire.begin();
+  //start Bluetooth
+  Serial.begin(9600);
   //start GNSS port
   gnssPort.begin(9600);
   //start servo
   servo.attach(5);
   //setup PID
   myPID.SetMode(AUTOMATIC);
-  myPID.SetOutputLimits(-90, 90);
-  myPID.SetSampleTime(1);
-  //start console
-  Serial.begin(9600);
-  // initialize IMU & verify connection
+  myPID.SetOutputLimits(-89, 89);
+  myPID.SetSampleTime(5);
+  //initialize IMU
   myIMU.initialize();
-  Serial.println(myIMU.testConnection() ? "MPU9250 OK" : "MPU9250 ??");
   myIMU.setFullScaleGyroRange(1); //500 LSB(d/s) scale
   myIMU.setFullScaleAccelRange(1); //4G scale
-  wdt_enable(WDTO_8S);
+  pinMode(13, OUTPUT);
 }
 
 // ----- Main loop
 void loop() {
   wdt_reset();
-  now = micros();
-  
-  getHeading_smooth();
-  calculatePID_input(calculateAzimuth(), heading);
 
-  if (abs(setpoint - input) <= 24) myPID.SetTunings(cp, ci, cd);
+  getHeading_smooth();
+  calculatePIDInput(calculateAzimuth(), heading);
+
+  float delta = abs(setpoint - input);
+  if (delta <= 24) myPID.SetTunings(cp, ci, cd);
   else myPID.SetTunings(ap, ai, ad);
   myPID.Compute();
-
-  //Move servo accordingly
-  if (GNSS_lat != 0 && GNSS_lon != 0) servo.write(output + 92);
-
-  if (loopcounter > 10) {
-    sendBTData();
-    loopcounter = 0;
+  //move servo accordingly
+  if (GNSS_lat != 0 && GNSS_lon != 0) {
+    servo.write(output + 90);
+    //indicate setpoint
+    if (delta <= 5) ledON;
+    else ledOFF;
   }
-  loopcounter++;
-  Serial.print(Gxyz[2]);
-  Serial.print("\t\t");
-  Serial.print(Axyz[2]);
-  Serial.print("\t\t");
-  Serial.println(heading);
-  last = now;
-  
+  if ((millis() - time_started) > 200) {
+    sendBTData();
+    time_started = millis();
+  }
   measureBatteryVoltage();
 }
 
 // ----- Read new data from sensor
 void getMPU() {
   myIMU.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
-  
+
   Axyz[0] = (float) ax * 2.048;
   Axyz[1] = (float) ay * 2.048;
   Axyz[2] = (float) az * 2.048;
@@ -188,24 +184,23 @@ void getHeading_smooth() {
   else heading = heading * smoothing + new_heading * (1 - smoothing);
 }
 
+// ----- Vector functions
 void vector_cross(float a[3], float b[3], float out[3]) {
   out[0] = a[1] * b[2] - a[2] * b[1];
   out[1] = a[2] * b[0] - a[0] * b[2];
   out[2] = a[0] * b[1] - a[1] * b[0];
 }
-
-float vector_dot(float a[3], float b[3]) {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
 void vector_normalize(float a[3]) {
   float mag = sqrt(vector_dot(a, a));
   a[0] /= mag;
   a[1] /= mag;
   a[2] /= mag;
 }
+float vector_dot(float a[3], float b[3]) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
 
-// ----- Request new data from GNSS module
+// ----- Get new data from GNSS module
 void updateGNSS() {
   while (gnss.available(gnssPort)) {
     gps_fix  fix = gnss.read();
@@ -224,15 +219,14 @@ int calculateAzimuth() {
   float lambda_1 = GNSS_lon * toRad;
   float fi_2 = tele_lat * toRad;
   float lambda_2 = tele_lon * toRad;
-  //Calculate gps based azimuth
   azimuth = round(atan2(sin(lambda_2 - lambda_1) * cos(fi_2), cos(fi_1) * sin(fi_2) - sin(fi_1) * cos(fi_2) * cos(lambda_2 - lambda_1)) * toDeg);
   if (azimuth < 0) azimuth += 360;
-  else if (azimuth > 360) azimuth -=360;
+  else if (azimuth > 360) azimuth -= 360;
   return azimuth;
 }
 
 // ----- Offset azimuth and heading correctly
-void calculatePID_input(float azimuth, float heading) {
+void calculatePIDInput(float azimuth, float heading) {
   if (azimuth > 180) azimuth -= 360;
   if (heading > 180) heading -= 360;
   input = heading - azimuth;
@@ -242,7 +236,7 @@ void calculatePID_input(float azimuth, float heading) {
 
 // ----- Read battery voltage
 void measureBatteryVoltage() {
-  float raw_voltage = analogRead(A6) * 5.15 / 1024.0;
+  float raw_voltage = analogRead(A6) * 5.01 / 1024.0;
   battVoltage = battVoltage * 0.95 + raw_voltage * 0.05;
 }
 
