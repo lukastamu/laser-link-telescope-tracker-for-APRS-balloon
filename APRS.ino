@@ -40,10 +40,8 @@ char StatusMessage[50] = "Laser balloon";
 //*****************************************************************************
 
 
-unsigned int   BeaconWait = 5; //seconds sleep for next beacon (TX).
-unsigned int   BattWait = 60;  //seconds sleep if super capacitors/batteries are below BattMin (important if power source is solar panel)
-float BattMin = 4.5;      // min Volts to wake up.
-float DraHighVolt = 9;  // min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
+unsigned int   BeaconWait = 1; //seconds sleep for next beacon (TX).
+float DraHighVolt = 4;  // min Volts for radio module (DRA818V) to transmit (TX) 1 Watt, below this transmit 0.5 Watt.
 
 boolean aliveStatus = true; //for tx status message on first wake-up just once.
 
@@ -69,7 +67,7 @@ uint32_t GEOFENCE_no_tx               = 0;
 boolean radioSetup = false;
 boolean GpsFirstFix = false;
 
-static char telemetry_buff[200];// telemetry buffer
+static char telemetry_buff[150];// telemetry buffer
 uint16_t TxCount = 1;
 
 float GNSS_lat = 0;
@@ -90,6 +88,7 @@ char I2Cmsg[200];
 int pos = 0;
 bool reading = false;
 bool newData = false;
+bool busy = false;
 
 void setup() {
   wdt_enable(WDTO_8S);
@@ -118,57 +117,18 @@ void setup() {
   APRS_useAlternateSymbolTable(alternateSymbolTable);
   APRS_setSymbol(Symbol);
   //increase following value (for example to 500UL) if you experience packet loss/decode issues.
-  APRS_setPreamble(350UL);
+  APRS_setPreamble(500UL);
   APRS_setPathSize(pathSize);
   AprsPinInput;
 
   Wire.begin(I2C_ADDRESS);
   Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
 }
 
 void loop() {
   wdt_reset();
-#if defined(DEVMODE)
-  Serial.println();
-  Serial.print("Lat: ");
-  Serial.print(GNSS_lat, 6);
-  Serial.print(" Lon: ");
-  Serial.print(GNSS_lon, 6);
-  Serial.print(" GNSS altitude: ");
-  Serial.print(GNSS_altitude);
-  Serial.print(" Pressure altitude: ");
-  Serial.println(pressureAltitude);
-  Serial.print("Pressure: ");
-  Serial.print(baroPressure);
-  Serial.print(" Baro temp: ");
-  Serial.print(baroTemp);
-  Serial.print(" Battery: ");
-  Serial.println(battVoltage);
-  Serial.print("Temperatures: ");
-  for (int i = 0; i <= 5; i++) {
-    Serial.print(tempSensor[i]);
-    Serial.print(" ");
-  }
-  Serial.println();
-  Serial.print("Gyro: ");
-  for (int i = 0; i <= 2; i++) {
-    Serial.print(Gxyz[i]);
-    Serial.print("   ");
-  }
-  Serial.print("Accel: ");
-  for (int i = 0; i <= 2; i++) {
-    Serial.print(Axyz[i]);
-    Serial.print("   ");
-  }
-  Serial.println();
-  Serial.print("Gimbal Heading: ");
-  Serial.print(gimbalHeading);
-  Serial.print(" Gimbal battery: ");
-  Serial.print(gimbalBattVoltage);
-  Serial.print(" Gimbal Gyro Z: ");
-  Serial.println(gimbalGyroZ);
-#endif
-
+  
   if (aliveStatus) {
     //send status tx on startup once (before gps fix)
 #if defined(DEVMODE)
@@ -197,11 +157,6 @@ void loop() {
     if (!radioSetup) {
       configureFreqbyLocation();
     }
-    //send status message every 60 minutes
-    /*if (gps.time.minute() == 0) {
-      sendStatus();
-      }*/
-
     sendLocation();
     Serial.flush();
     sleepSeconds(BeaconWait);
@@ -212,6 +167,11 @@ void loop() {
 #endif
     sleepSeconds(BeaconWait);
   }
+}
+
+void requestEvent() {
+  if (busy) Wire.write("1");
+  else Wire.write("0");
 }
 
 void receiveEvent(int howMany) {
@@ -290,6 +250,7 @@ void aprs_msg_callback(struct AX25Msg *msg) {
 }
 
 void sleepSeconds(int sec) {
+  busy = false;
   RfOFF;
   RfPttOFF;
   wdt_disable();
@@ -297,6 +258,7 @@ void sleepSeconds(int sec) {
     delay(1000);
   }
   wdt_enable(WDTO_8S);
+  busy = true;
 }
 
 
