@@ -141,6 +141,9 @@ void loop() {
   updateGNSS();
   measureBatteryVoltage();
   if (millis() - timer_1 > 100) {
+    if (!isAPRSbusy()) {
+      sendDataToAPRS();
+    }
     getBTData();
     getMPU();
     readTemperatures();
@@ -165,7 +168,6 @@ void loop() {
     led5ON;
     writeToSD();
     updateBaroData();
-    sendDataToAPRS();
     if (gimbalBattVoltage != 0) {
       delay(50);
       led4ON;
@@ -285,6 +287,22 @@ void writeToSD() {
   logfile.print(gimbalGyroZ);
   logfile.println();
   logfile.close();
+}
+
+// ----- Check if aprs module is not busy
+bool isAPRSbusy() {
+  Wire.requestFrom(LightAPRS_ADDRESS, 1);
+  while (Wire.available()) {
+    char c = Wire.read();
+    if (c == '1') {
+      Serial.println("busy");
+      return true;
+    }
+    else {
+      Serial.println("not busy");
+      return false;
+    }
+  }
 }
 
 // ----- Send data to LightAPRS module via I2C
